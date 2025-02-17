@@ -13,16 +13,6 @@ class MetadataEditor(QMainWindow):
         super().__init__()
         self.files = []
         self.exiftool_path = self.find_exiftool()
-        if not self.exiftool_path:
-            QMessageBox.critical(
-                self,
-                "Error",
-                "ExifTool not found. Please install ExifTool first:\n"
-                "- Windows: Download from https://exiftool.org\n"
-                "- macOS: brew install exiftool\n"
-                "- Linux: sudo apt-get install exiftool or equivalent"
-            )
-            sys.exit(1)
         self.init_ui()
 
     def find_exiftool(self):
@@ -60,25 +50,6 @@ class MetadataEditor(QMainWindow):
 
         return None
 
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.accept()
-        else:
-            event.ignore()
-
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.accept()
-        else:
-            event.ignore()
-
-    def dropEvent(self, event):
-        files = [url.toLocalFile() for url in event.mimeData().urls()]
-        for file_path in files:
-            if os.path.isfile(file_path) and file_path not in self.files:
-                self.files.append(file_path)
-                self.file_list.addItem(os.path.basename(file_path))
-
     def init_ui(self):
         self.setWindowTitle('File Metadata Editor')
         self.setMinimumWidth(600)
@@ -87,6 +58,29 @@ class MetadataEditor(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
+
+        # Mode selection
+        mode_widget = QWidget()
+        mode_layout = QHBoxLayout(mode_widget)
+        
+        self.simple_mode_btn = QPushButton('Simple Mode')
+        self.simple_mode_btn.setCheckable(True)
+        self.simple_mode_btn.setChecked(True)  # Default to simple mode
+        mode_layout.addWidget(self.simple_mode_btn)
+        
+        self.full_mode_btn = QPushButton('Full Metadata Mode')
+        self.full_mode_btn.setCheckable(True)
+        if not self.exiftool_path:
+            self.full_mode_btn.setEnabled(False)
+            self.full_mode_btn.setToolTip("ExifTool not found. Install ExifTool to enable full metadata editing.")
+        mode_layout.addWidget(self.full_mode_btn)
+        
+        # Connect mode buttons to ensure only one is checked at a time
+        self.simple_mode_btn.clicked.connect(lambda: self.mode_button_clicked('simple'))
+        self.full_mode_btn.clicked.connect(lambda: self.mode_button_clicked('full'))
+        
+        mode_layout.addStretch()
+        layout.addWidget(mode_widget)
 
         # File selection button
         select_btn = QPushButton('Select Files')
@@ -97,7 +91,6 @@ class MetadataEditor(QMainWindow):
         date_widget = QWidget()
         date_layout = QGridLayout(date_widget)
         
-        # Date input
         date_layout.addWidget(QLabel('Date:'), 0, 0)
         self.date_edit = QLineEdit()
         self.date_edit.setPlaceholderText('YYYY-MM-DD')
@@ -105,7 +98,6 @@ class MetadataEditor(QMainWindow):
         self.date_edit.setText(current_date)
         date_layout.addWidget(self.date_edit, 0, 1)
 
-        # Time input
         date_layout.addWidget(QLabel('Time:'), 0, 2)
         self.time_edit = QLineEdit()
         self.time_edit.setPlaceholderText('HH:MM:SS')
@@ -113,12 +105,11 @@ class MetadataEditor(QMainWindow):
         self.time_edit.setText(current_time)
         date_layout.addWidget(self.time_edit, 0, 3)
 
-        # Now button
         now_btn = QPushButton('Set to Now')
         now_btn.clicked.connect(self.set_current_datetime)
         date_layout.addWidget(now_btn, 0, 4)
 
-        # Add interval option
+        # Sequential timing options
         interval_widget = QWidget()
         interval_layout = QHBoxLayout(interval_widget)
         
@@ -128,7 +119,7 @@ class MetadataEditor(QMainWindow):
         
         interval_layout.addWidget(QLabel('Interval (seconds):'))
         self.interval_spinbox = QLineEdit()
-        self.interval_spinbox.setText('60')  # Default 1 minute interval
+        self.interval_spinbox.setText('60')
         self.interval_spinbox.setFixedWidth(60)
         interval_layout.addWidget(self.interval_spinbox)
         
@@ -137,7 +128,7 @@ class MetadataEditor(QMainWindow):
 
         layout.addWidget(date_widget)
 
-        # File list with drag and drop
+        # File list
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QListWidget.ExtendedSelection)
         self.file_list.setAcceptDrops(True)
@@ -168,6 +159,7 @@ class MetadataEditor(QMainWindow):
         self.show()
 
     def select_files(self):
+        """Open file dialog to select files."""
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "Select Files to Process",
@@ -181,11 +173,13 @@ class MetadataEditor(QMainWindow):
                 self.file_list.addItem(os.path.basename(file_path))
 
     def set_current_datetime(self):
+        """Set the date and time fields to current time."""
         now = datetime.now()
         self.date_edit.setText(now.strftime('%Y-%m-%d'))
         self.time_edit.setText(now.strftime('%H:%M:%S'))
 
     def remove_selected(self):
+        """Remove selected files from the list."""
         selected_items = self.file_list.selectedItems()
         for item in selected_items:
             row = self.file_list.row(item)
@@ -193,10 +187,43 @@ class MetadataEditor(QMainWindow):
             del self.files[row]
 
     def clear_files(self):
+        """Clear all files from the list."""
         self.file_list.clear()
         self.files.clear()
 
+    def mode_button_clicked(self, mode):
+        """Handle mode selection button clicks."""
+        if mode == 'simple':
+            self.simple_mode_btn.setChecked(True)
+            self.full_mode_btn.setChecked(False)
+        else:
+            self.simple_mode_btn.setChecked(False)
+            self.full_mode_btn.setChecked(True)
+
+    def dragEnterEvent(self, event):
+        """Handle drag enter events for file drag and drop."""
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Handle drag move events for file drag and drop."""
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        """Handle drop events for file drag and drop."""
+        files = [url.toLocalFile() for url in event.mimeData().urls()]
+        for file_path in files:
+            if os.path.isfile(file_path) and file_path not in self.files:
+                self.files.append(file_path)
+                self.file_list.addItem(os.path.basename(file_path))
+
     def process_files(self):
+        """Process all files in the list."""
         if not self.files:
             QMessageBox.warning(self, "Warning", "No files to process.")
             return
@@ -210,7 +237,7 @@ class MetadataEditor(QMainWindow):
                 "%Y-%m-%d %H:%M:%S"
             )
             
-            # Sort files by name if using sequential times
+            # Sort files if using sequential times
             working_files = self.files.copy()
             if self.sequential_cb.isChecked():
                 working_files.sort(key=lambda x: os.path.basename(x).lower())
@@ -232,7 +259,10 @@ class MetadataEditor(QMainWindow):
                     current_dt = base_datetime
 
                 try:
-                    self.modify_metadata(file, current_dt)
+                    if self.simple_mode_btn.isChecked():
+                        self.modify_file_dates(file, current_dt)
+                    else:
+                        self.modify_metadata(file, current_dt)
                     processed_files += 1
                 except Exception as e:
                     errors.append(f"Error processing {os.path.basename(file)}: {str(e)}")
@@ -259,13 +289,31 @@ class MetadataEditor(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
 
+    def modify_file_dates(self, file_path, timestamp):
+        """Modify only file system dates."""
+        try:
+            file_timestamp = timestamp.timestamp()
+            os.utime(file_path, (file_timestamp, file_timestamp))
+            
+            # Handle creation time for different platforms
+            if platform.system() == 'Windows':
+                powershell_cmd = f'(Get-Item "{file_path}").CreationTime = (Get-Date "{timestamp}")'
+                subprocess.run(['powershell', '-Command', powershell_cmd], check=True)
+            elif platform.system() == 'Darwin':  # macOS
+                subprocess.run(['SetFile', '-d', timestamp.strftime("%m/%d/%Y %H:%M:%S"), file_path], check=True)
+                
+        except Exception as e:
+            raise Exception(f"Error modifying file dates: {str(e)}")
+
     def modify_metadata(self, file_path, timestamp):
         """Modify file metadata using ExifTool."""
+        if not self.exiftool_path:
+            raise Exception("ExifTool not found. Please install ExifTool first.")
+            
         date_str = timestamp.strftime("%Y:%m:%d %H:%M:%S")
         
-        # Prepare ExifTool commands for various metadata fields
         exiftool_args = [
-            self.exiftool_path,  # Use the found ExifTool path
+            self.exiftool_path,
             '-overwrite_original',
             f'-AllDates="{date_str}"',
             f'-FileModifyDate="{date_str}"',
@@ -288,17 +336,9 @@ class MetadataEditor(QMainWindow):
                 check=True
             )
             
-            # Update filesystem timestamps
-            file_timestamp = timestamp.timestamp()
-            os.utime(file_path, (file_timestamp, file_timestamp))
+            # Also update filesystem timestamps
+            self.modify_file_dates(file_path, timestamp)
             
-            # Handle creation time for different platforms
-            if platform.system() == 'Windows':
-                powershell_cmd = f'(Get-Item "{file_path}").CreationTime = (Get-Date "{timestamp}")'
-                subprocess.run(['powershell', '-Command', powershell_cmd], check=True)
-            elif platform.system() == 'Darwin':  # macOS
-                subprocess.run(['SetFile', '-d', timestamp.strftime("%m/%d/%Y %H:%M:%S"), file_path], check=True)
-
         except subprocess.CalledProcessError as e:
             raise Exception(f"ExifTool error: {e.stderr}")
         except Exception as e:
